@@ -1,0 +1,91 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import geopandas as gpd
+from scipy.interpolate import griddata
+from shapely.geometry import Point
+import zipfile
+import os
+
+# 1. 업로드한 shapefile 압축 해제
+shp_dir = "/content/seoul_shp"
+os.makedirs(shp_dir, exist_ok=True)
+with zipfile.ZipFile("/content/seoul_EPSG.zip", 'r') as zip_ref:
+    zip_ref.extractall(shp_dir)
+
+# 2. SHP 파일 로드 (shp_dir 안의 .shp 경로 확인)
+shp_files = [f for f in os.listdir(shp_dir) if f.endswith(".shp")]
+assert len(shp_files) > 0, "SHP 파일을 찾을 수 없습니다."
+seoul_gdf = gpd.read_file(os.path.join(shp_dir, shp_files[0]))
+seoul_gdf["geometry"] = seoul_gdf["geometry"].buffer(0)
+
+
+
+# 3. 기온 데이터 불러오기 (인코딩은 cp949 사용)
+df = pd.read_csv("OBS_AWS_TIM_20250511163357.csv", encoding='cp949')
+df["지점명"] = df["지점명"].str.strip()
+df["일시"] = pd.to_datetime(df["일시"])
+
+# 4. 위경도 정보 설정
+location_coords = {
+    "강남": (37.4982, 127.08162),
+    "강동": (37.55556, 127.14498),
+    "강북": (37.63972, 127.02576),
+    "강서": (37.5739, 126.82953),
+    "관악": (37.45284, 126.95015),
+    "광진": (37.5338, 127.08566),
+    "구로": (37.49328, 126.82629),
+    "금천": (37.46551, 126.90016),
+    "기상청": (37.4933, 126.91746),
+    "남현": (37.46347, 126.98154),
+    "노원": (37.62186, 127.09192),
+    "도봉": (37.66557, 127.03042),
+    "동대문": (37.58463, 127.06036),
+    "마포": (37.55165, 126.92915),
+    "서대문": (37.57047, 126.94078),
+    "서초": (37.48462, 127.02601),
+    "성동": (37.54721, 127.03885),
+    "성북": (37.61134, 126.99981),
+    "송파": (37.51151, 127.0967),
+    "양천": (37.52823, 126.87937),
+    "영등포": (37.52706, 126.90705),
+    "용산": (37.51955, 126.97629),
+    "은평": (37.64647, 126.94273),
+    "중구": (37.55236, 126.98736),
+    "중랑": (37.58551, 127.08682),
+    "한강": (37.52489, 126.93904),
+    "현충원": (37.50036, 126.97652)
+}
+
+# 5. 특정 시각 선택 (예: 2024-12-30 03:00)
+target_time = pd.Timestamp("2024-12-30 03:00")
+df_time = df[df["일시"] == target_time].copy()
+df_time["위도"] = df_time["지점명"].map(lambda x: location_coords.get(x, (np.nan, np.nan))[0])
+df_time["경도"] = df_time["지점명"].map(lambda x: location_coords.get(x, (np.nan, np.nan))[1])
+df_valid = df_time.dropna(subset=["위도", "경도", "기온(°C)"])
+
+# 6. 좌표 및 값 준비
+points = df_valid[["경도", "위도"]].values
+values = df_valid["기온(°C)"].values
+
+# 7. 보간 그리드 생성
+lon_min, lat_min, lon_max, lat_max = seoul_gdf.total_bounds
+grid_x, grid_y = np.meshgrid(
+    np.linspace(lon_min, lon_max, 128),
+    np.linspace(lat_min, lat_max, 128)
+)
+
+# 8. 보간 및 히트맵 생성
+grid_temp = griddata(points, values, (grid_x, grid_y), method='cubic')
+
+# 9. 히트맵 흑백 시각화
+fig, ax = plt.subplots(figsize=(8, 8))
+seoul_gdf.boundary.plot(ax=ax, linewidth=1, color='black')  # 서울 경계
+heatmap = ax.imshow(grid_temp, cmap='gray', origin='lower',
+                    extent=(lon_min, lon_max, lat_min, lat_max),
+                    alpha=0.7)
+plt.colorbar(heatmap, ax=ax, label="기온 (°C)")
+plt.title(f"서울시 기온 분포 흑백 히트맵 - {target_time}")
+plt.xlabel("경도")
+plt.ylabel("위도")
+plt.show()
