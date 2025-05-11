@@ -273,3 +273,73 @@ optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 # --- 학습 루프 ---
 print("\nStarting Training...")
 for epoch in range(1, NUM_EPOCHS + 1):
+    model.train() # 훈련 모드
+    running_loss = 0.0
+
+    for batch_idx, (input_seq_batch, target_img_batch) in enumerate(dataloader):
+        # input_seq_batch shape: (Batch, 24, 3, 64, 64)
+        # target_img_batch shape: (Batch, 3, 64, 64) <- 정답 이미지 전체 (기온 포함)
+
+        # 데이터를 디바이스로 이동
+        input_seq_batch = input_seq_batch.to(DEVICE)
+        target_img_batch = target_img_batch.to(DEVICE)
+
+        # 타겟 이미지에서 기온 채널 (첫 번째 채널, 인덱스 0)만 선택
+        # shape: (Batch, 1, 64, 64)
+        target_temp_batch = target_img_batch[:, 0:1, :, :] # 0:1 슬라이싱으로 채널 차원 크기 1 유지
+
+        # 그라디언트 초기화
+        optimizer.zero_grad()
+
+        # 순전파: 모델에 입력 시퀀스 배치 전달 (24개 시점)
+        # 모델은 다음 시점의 1채널 기온 이미지 배치 (B, 1, 64, 64)를 예측
+        predicted_temp_batch = model(input_seq_batch)
+
+        # 손실 계산: 예측된 기온 이미지와 실제 타겟 기온 이미지 비교
+        loss = criterion(predicted_temp_batch, target_temp_batch)
+
+        # 역전파
+        loss.backward()
+
+        # 가중치 업데이트
+        optimizer.step()
+
+        running_loss += loss.item()
+
+        # 진행 상황 출력 (선택 사항)
+        if batch_idx % 10 == 0:
+             print(f'Epoch: {epoch}, Batch: {batch_idx}/{len(dataloader)}, Loss: {loss.item():.6f}')
+
+    avg_loss = running_loss / len(dataloader)
+    print(f'--- Epoch {epoch} Finished. Average Loss: {avg_loss:.4f} ---')
+
+# --- 학습 완료 ---
+print("\nTraining finished!")
+
+# --- 모델 저장 (선택 사항) ---
+# try:
+#     # 모델의 상태 딕셔너리 저장
+#     torch.save(model.state_dict(), 'convlstm_temp_prediction_model.pth')
+#     print("Model state_dict saved successfully.")
+# except Exception as e:
+#     print(f"Error saving model: {e}")
+
+
+# --- 추론 예제 (선택 사항, 간단히 구조만 보여줌) ---
+# 실제 추론 시에는 훈련된 모델을 로드해야 합니다.
+# loaded_model = NextTemperatureModel(...) # 모델 구조는 동일하게 정의
+# loaded_model.load_state_dict(torch.load('convlstm_temp_prediction_model.pth'))
+# loaded_model.to(DEVICE)
+# loaded_model.eval() # 평가 모드
+
+# with torch.no_grad():
+#    # 추론할 입력 시퀀스 (sequence_length, 3, 64, 64) 형태의 데이터 로드 또는 준비
+#    # 예: inference_input_sequence_np = ...
+#    # inference_input_sequence = torch.from_numpy(inference_input_sequence_np).float().to(DEVICE)
+#    # inference_input_sequence = inference_input_sequence.unsqueeze(0) # 배치 차원 추가 (1, L, 3, 64, 64)
+
+#    # predicted_next_temp_batch = loaded_model(inference_input_sequence) # (1, 1, 64, 64)
+#    # predicted_next_temp_image = predicted_next_temp_batch.squeeze(0).cpu().numpy() # 배치, 채널 차원 제거 -> (64, 64) numpy 배열
+
+#    # print(f"Predicted next temperature image shape: {predicted_next_temp_image.shape}")
+#    # # 예측 결과 사용 (예: 시각화)
