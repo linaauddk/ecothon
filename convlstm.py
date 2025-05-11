@@ -173,6 +173,29 @@ class NextTemperatureModel(nn.Module):
             # 만약 ConvLSTM이 공간 크기를 변경했다면, UpSampling 또는 ConvTranspose2d 등으로 복원 필요
         )
 
+        # 좀 더 정교한 출력을 내야 할 때에는 마지막에 conv layer 1개 대신에 더욱 복잡한 신경망을 연결. 
+        '''
+        self.intermediate_processing = nn.Sequential(
+        # 첫 번째 블록: Conv -> BatchNorm -> ReLU
+        nn.Conv2d(in_channels=self.convlstm_hidden_channels, out_channels=self.convlstm_hidden_channels, kernel_size=3, padding=1),
+        nn.BatchNorm2d(num_features=self.convlstm_hidden_channels),
+        nn.ReLU(inplace=True),
+
+        # 두 번째 블록 (선택 사항, 더 복잡한 모델 원하면 추가)
+        # nn.Conv2d(in_channels=self.convlstm_hidden_channels, out_channels=self.convlstm_hidden_channels, kernel_size=3, padding=1),
+        # nn.BatchNorm2d(num_features=self.convlstm_hidden_channels),
+        # nn.ReLU(inplace=True),
+
+        # ... 필요시 블록 더 추가 ...
+        '''
+
+            # 마지막 컨볼루션: 특징 채널 수를 최종 출력 채널 수(1)로 매핑
+            # 이 최종 Conv는 intermediate_processing Sequential에 포함시키거나,
+            # 별도로 self.output_conv로 분리할 수 있습니다.
+            # 여기서는 Sequential 내에 포함시켜 중간 처리의 마지막 단계로 만듭니다.
+            nn.Conv2d(in_channels=self.convlstm_hidden_channels, out_channels=self.output_image_channels, kernel_size=1) # 1x1 Conv로 채널 수만 변경
+        )
+
         # --- 가중치 초기화 Placeholder ---
         # 모델 인스턴스 생성 후 model.apply(init_weights) 호출하여 적용
         # print("Weight Initialization Placeholder: Apply init_weights function after model creation.")
